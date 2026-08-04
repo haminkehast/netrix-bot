@@ -9,19 +9,25 @@ from shop_data import SHOP_DATA
 
 # ================= ایجاد جدول تنظیمات در دیتابیس =================
 def init_settings_db():
-    conn = database.sqlite3.connect('netrix.db')
+    conn = database.get_db_connection()
+    if not conn:
+        return
     cursor = conn.cursor()
     cursor.execute('''CREATE TABLE IF NOT EXISTS settings (
                         key TEXT PRIMARY KEY,
                         value TEXT)''')
     conn.commit()
+    cursor.close()
     conn.close()
 
 def get_setting(key, default=""):
-    conn = database.sqlite3.connect('netrix.db')
+    conn = database.get_db_connection()
+    if not conn:
+        return default
     cursor = conn.cursor()
-    cursor.execute("SELECT value FROM settings WHERE key=?", (key,))
+    cursor.execute("SELECT value FROM settings WHERE key=%s", (key,))
     res = cursor.fetchone()
+    cursor.close()
     conn.close()
     return res[0] if res else default
 
@@ -147,9 +153,7 @@ def register_admin_handlers(bot):
         # بازنویسی مستقیم روی فایل shop_data.py
         try:
             with open('shop_data.py', 'w', encoding='utf-8') as f:
-                # تبدیل لیست به تاپل برای حفظ ساختار اولیه کد شما
                 json_str = json.dumps(SHOP_DATA, ensure_ascii=False, indent=4)
-                # جایگزینی براکت‌ها با پرانتز در پکیج‌ها تا ساختار تاپل به هم نریزد
                 import re
                 formatted_str = re.sub(r'\[\s*"([^"]+)",\s*(\d+)\s*\]', r'("\1", \2)', json_str)
                 f.write(f"SHOP_DATA = {formatted_str}\n")
@@ -186,10 +190,17 @@ def register_admin_handlers(bot):
 
     def process_new_text(message, bot, text_key):
         if message.text in ["/start", "/admin"]: return
-        conn = database.sqlite3.connect('netrix.db')
+        conn = database.get_db_connection()
+        if not conn:
+            bot.send_message(message.chat.id, "❌ خطای اتصال به دیتابیس.")
+            return
         cursor = conn.cursor()
-        cursor.execute("REPLACE INTO settings (key, value) VALUES (?, ?)", (text_key, message.text))
+        cursor.execute("""
+            INSERT INTO settings (key, value) VALUES (%s, %s)
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+        """, (text_key, message.text))
         conn.commit()
+        cursor.close()
         conn.close()
         bot.send_message(message.chat.id, "✅ متن جدید با موفقیت در سیستم مرکزی ذخیره شد!", reply_markup=InlineKeyboardMarkup().add(InlineKeyboardButton("🔙 بازگشت به تنظیمات", callback_data="admin_settings")))
 
@@ -199,11 +210,14 @@ def register_admin_handlers(bot):
     def admin_stats_menu(call):
         if int(call.from_user.id) != int(ADMIN_ID): return
         
-        conn = database.sqlite3.connect('netrix.db')
+        conn = database.get_db_connection()
+        if not conn:
+            bot.answer_callback_query(call.id, "❌ خطای اتصال به دیتابیس.", show_alert=True)
+            return
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*), SUM(balance) FROM users")
         user_res = cursor.fetchone()
-        total_users, total_balance = user_res[0] or 0, user_res[1] or 0
+        total_users, total_balance = (user_res[0] or 0), (user_res[1] or 0)
         
         cursor.execute("SELECT status, COUNT(*) FROM configs GROUP BY status")
         configs = cursor.fetchall()
@@ -214,6 +228,7 @@ def register_admin_handlers(bot):
             
         cursor.execute("SELECT plan_id, COUNT(*) FROM configs WHERE status = 'available' GROUP BY plan_id HAVING COUNT(*) < 5")
         low_stock = cursor.fetchall()
+        cursor.close()
         conn.close()
         
         low_stock_text = "\n✅ **وضعیت انبار:** تمامی قفسه‌ها موجودی کافی دارند."
@@ -252,11 +267,15 @@ def register_admin_handlers(bot):
         try:
             balance = database.get_balance(target_id)
             user_stats = database.get_user_stats(target_id) or {}
-            conn = database.sqlite3.connect('netrix.db')
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM configs WHERE owner_id = ? AND status = 'sold'", (target_id,))
-            configs_count = cursor.fetchone()[0]
-            conn.close()
+            conn = database.get_db_connection()
+            if conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM configs WHERE owner_id = %s AND status = 'sold'", (target_id,))
+                configs_count = cursor.fetchone()[0]
+                cursor.close()
+                conn.close()
+            else:
+                configs_count = 0
             
             text = (
                 f"👤 **پروفایل کاربر:** `{target_id}`\n\n"
@@ -308,10 +327,13 @@ def register_admin_handlers(bot):
     def admin_view_user_subs(call):
         if int(call.from_user.id) != int(ADMIN_ID): return
         target_id = call.data.split("_")[2]
-        conn = database.sqlite3.connect('netrix.db')
+        conn = database.get_db_connection()
+        if not conn:
+            return bot.answer_callback_query(call.id, "❌ خطای اتصال به دیتابیس.", show_alert=True)
         cursor = conn.cursor()
-        cursor.execute("SELECT id, config_text, plan_id FROM configs WHERE owner_id = ? AND status = 'sold'", (target_id,))
+        cursor.execute("SELECT id, config_text, plan_id FROM configs WHERE owner_id = %s AND status = 'sold'", (target_id,))
         configs = cursor.fetchall()
+        cursor.close()
         conn.close()
         
         if not configs: return bot.answer_callback_query(call.id, "هیچ اشتراک فعالی ندارد.", show_alert=True)
@@ -346,10 +368,13 @@ def register_admin_handlers(bot):
     @bot.callback_query_handler(func=lambda call: call.data == "admin_recent_sales")
     def admin_recent_sales(call):
         if int(call.from_user.id) != int(ADMIN_ID): return
-        conn = database.sqlite3.connect('netrix.db')
+        conn = database.get_db_connection()
+        if not conn:
+            return bot.answer_callback_query(call.id, "❌ خطای اتصال به دیتابیس.", show_alert=True)
         cursor = conn.cursor()
         cursor.execute("SELECT id, owner_id, plan_id FROM configs WHERE status = 'sold' ORDER BY id DESC LIMIT 10")
         recent = cursor.fetchall()
+        cursor.close()
         conn.close()
         
         if not recent: return bot.answer_callback_query(call.id, "فروشی ثبت نشده است.", show_alert=True)
@@ -365,10 +390,13 @@ def register_admin_handlers(bot):
     @bot.callback_query_handler(func=lambda call: call.data == "admin_top_buyers")
     def admin_top_buyers(call):
         if int(call.from_user.id) != int(ADMIN_ID): return
-        conn = database.sqlite3.connect('netrix.db')
+        conn = database.get_db_connection()
+        if not conn:
+            return bot.answer_callback_query(call.id, "❌ خطای اتصال به دیتابیس.", show_alert=True)
         cursor = conn.cursor()
         cursor.execute("SELECT owner_id, COUNT(*) as c FROM configs WHERE status = 'sold' GROUP BY owner_id ORDER BY c DESC LIMIT 10")
         top_buyers = cursor.fetchall()
+        cursor.close()
         conn.close()
         
         if not top_buyers: return bot.answer_callback_query(call.id, "رکوردی وجود ندارد.", show_alert=True)
@@ -421,10 +449,13 @@ def register_admin_handlers(bot):
 
     def execute_broadcast(bot, admin_chat_id, source_chat_id, source_msg_id, button_info):
         bot.send_message(admin_chat_id, "⏳ در حال ارسال به کاربران...")
-        conn = database.sqlite3.connect('netrix.db')
+        conn = database.get_db_connection()
+        if not conn:
+            return bot.send_message(admin_chat_id, "❌ خطای اتصال به دیتابیس.")
         cursor = conn.cursor()
         cursor.execute("SELECT user_id FROM users")
         users = cursor.fetchall()
+        cursor.close()
         conn.close()
         
         success, failed = 0, 0
