@@ -9,7 +9,7 @@ from shop_data import SHOP_DATA
 
 # ================= ایجاد جدول تنظیمات در دیتابیس =================
 def init_settings_db():
-    conn = database.get_db_connection()
+    conn = database.get_connection()
     if not conn:
         return
     cursor = conn.cursor()
@@ -21,7 +21,7 @@ def init_settings_db():
     conn.close()
 
 def get_setting(key, default=""):
-    conn = database.get_db_connection()
+    conn = database.get_connection()
     if not conn:
         return default
     cursor = conn.cursor()
@@ -190,7 +190,7 @@ def register_admin_handlers(bot):
 
     def process_new_text(message, bot, text_key):
         if message.text in ["/start", "/admin"]: return
-        conn = database.get_db_connection()
+        conn = database.get_connection()
         if not conn:
             bot.send_message(message.chat.id, "❌ خطای اتصال به دیتابیس.")
             return
@@ -210,7 +210,7 @@ def register_admin_handlers(bot):
     def admin_stats_menu(call):
         if int(call.from_user.id) != int(ADMIN_ID): return
         
-        conn = database.get_db_connection()
+        conn = database.get_connection()
         if not conn:
             bot.answer_callback_query(call.id, "❌ خطای اتصال به دیتابیس.", show_alert=True)
             return
@@ -267,7 +267,7 @@ def register_admin_handlers(bot):
         try:
             balance = database.get_balance(target_id)
             user_stats = database.get_user_stats(target_id) or {}
-            conn = database.get_db_connection()
+            conn = database.get_connection()
             if conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT COUNT(*) FROM configs WHERE owner_id = %s AND status = 'sold'", (target_id,))
@@ -327,7 +327,7 @@ def register_admin_handlers(bot):
     def admin_view_user_subs(call):
         if int(call.from_user.id) != int(ADMIN_ID): return
         target_id = call.data.split("_")[2]
-        conn = database.get_db_connection()
+        conn = database.get_connection()
         if not conn:
             return bot.answer_callback_query(call.id, "❌ خطای اتصال به دیتابیس.", show_alert=True)
         cursor = conn.cursor()
@@ -368,7 +368,7 @@ def register_admin_handlers(bot):
     @bot.callback_query_handler(func=lambda call: call.data == "admin_recent_sales")
     def admin_recent_sales(call):
         if int(call.from_user.id) != int(ADMIN_ID): return
-        conn = database.get_db_connection()
+        conn = database.get_connection()
         if not conn:
             return bot.answer_callback_query(call.id, "❌ خطای اتصال به دیتابیس.", show_alert=True)
         cursor = conn.cursor()
@@ -390,7 +390,7 @@ def register_admin_handlers(bot):
     @bot.callback_query_handler(func=lambda call: call.data == "admin_top_buyers")
     def admin_top_buyers(call):
         if int(call.from_user.id) != int(ADMIN_ID): return
-        conn = database.get_db_connection()
+        conn = database.get_connection()
         if not conn:
             return bot.answer_callback_query(call.id, "❌ خطای اتصال به دیتابیس.", show_alert=True)
         cursor = conn.cursor()
@@ -449,7 +449,7 @@ def register_admin_handlers(bot):
 
     def execute_broadcast(bot, admin_chat_id, source_chat_id, source_msg_id, button_info):
         bot.send_message(admin_chat_id, "⏳ در حال ارسال به کاربران...")
-        conn = database.get_db_connection()
+        conn = database.get_connection()
         if not conn:
             return bot.send_message(admin_chat_id, "❌ خطای اتصال به دیتابیس.")
         cursor = conn.cursor()
