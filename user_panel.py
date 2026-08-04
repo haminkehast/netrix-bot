@@ -50,27 +50,34 @@ def register_user_panel_handlers(bot):
         CATEGORIES = {"1": "مولتی لوکیشن VIP", "2": "مولتی لوکیشن اقتصادی", "3": "مولتی لوکیشن نامحدود", "4": "آی‌پی ثابت آلمان", "5": "آی‌پی ثابت آمریکا"}
         cat_name = CATEGORIES.get(cat_id, "نامشخص")
         
-        conn = database.sqlite3.connect('netrix.db')
+        conn = database.get_connection()
+        if not conn:
+            bot.answer_callback_query(call.id, "❌ خطای اتصال به سرور.", show_alert=True)
+            return
+            
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM configs WHERE owner_id = ? AND plan_id = ?", (user_id, plan_id))
+        cursor.execute("SELECT COUNT(*) FROM configs WHERE owner_id = %s AND plan_id = %s", (user_id, plan_id))
         if cursor.fetchone()[0] > 0:
+            cursor.close()
             conn.close()
             bot.answer_callback_query(call.id, f"❌ شما قبلاً تست {cat_name} را دریافت کرده‌اید!", show_alert=True)
             return
             
-        cursor.execute("SELECT id, config_text FROM configs WHERE plan_id = ? AND status = 'available' LIMIT 1", (plan_id,))
+        cursor.execute("SELECT id, config_text FROM configs WHERE plan_id = %s AND status = 'available' LIMIT 1", (plan_id,))
         config = cursor.fetchone()
         
         if not config:
+            cursor.close()
             conn.close()
             bot.answer_callback_query(call.id, f"⚠️ متاسفانه ظرفیت تست {cat_name} تکمیل است.", show_alert=True)
             return
             
         config_id, config_text = config
-        cursor.execute("UPDATE configs SET status = 'sold', owner_id = ? WHERE id = ?", (user_id, config_id))
-        cursor.execute("SELECT COUNT(*) FROM configs WHERE plan_id = ? AND status = 'available'", (plan_id,))
+        cursor.execute("UPDATE configs SET status = 'sold', owner_id = %s WHERE id = %s", (user_id, config_id))
+        cursor.execute("SELECT COUNT(*) FROM configs WHERE plan_id = %s AND status = 'available'", (plan_id,))
         remaining_stock = cursor.fetchone()[0]
         conn.commit()
+        cursor.close()
         conn.close()
         
         admin_report = f"🎁 **یک تست رایگان دریافت شد!**\n\n👤 آیدی کاربر: `{user_id}`\n🔹 سرویس: تست {cat_name}\n🔗 کانفیگ تحویل داده شده:\n`{config_text}`\n\n📊 **موجودی باقی‌مانده این تست:** {remaining_stock} عدد"
@@ -95,11 +102,15 @@ def register_user_panel_handlers(bot):
             balance = 0
             user_stats = {}
 
-        conn = database.sqlite3.connect('netrix.db')
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM configs WHERE owner_id = ? AND status = 'sold'", (user_id,))
-        real_orders_count = cursor.fetchone()[0]
-        conn.close()
+        conn = database.get_connection()
+        if conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM configs WHERE owner_id = %s AND status = 'sold'", (user_id,))
+            real_orders_count = cursor.fetchone()[0]
+            cursor.close()
+            conn.close()
+        else:
+            real_orders_count = 0
 
         total_spent = user_stats.get('total_spent', 0)
         transactions_count = user_stats.get('transactions_count', 0)
@@ -134,10 +145,15 @@ def register_user_panel_handlers(bot):
     @bot.callback_query_handler(func=lambda call: call.data == "my_subs")
     def my_subscriptions(call):
         user_id = call.from_user.id
-        conn = database.sqlite3.connect('netrix.db')
+        conn = database.get_connection()
+        if not conn:
+            bot.answer_callback_query(call.id, "❌ خطای سرور.", show_alert=True)
+            return
+            
         cursor = conn.cursor()
-        cursor.execute("SELECT id, plan_id FROM configs WHERE owner_id = ? AND status = 'sold'", (user_id,))
+        cursor.execute("SELECT id, plan_id FROM configs WHERE owner_id = %s AND status = 'sold'", (user_id,))
         user_configs = cursor.fetchall()
+        cursor.close()
         conn.close()
 
         if not user_configs:
@@ -178,10 +194,15 @@ def register_user_panel_handlers(bot):
     @bot.callback_query_handler(func=lambda call: call.data.startswith("sub_detail_") or call.data.startswith("sub_update_"))
     def sub_details(call):
         c_id = call.data.split("_")[2]
-        conn = database.sqlite3.connect('netrix.db')
+        conn = database.get_connection()
+        if not conn:
+            bot.answer_callback_query(call.id, "❌ خطای سرور.", show_alert=True)
+            return
+            
         cursor = conn.cursor()
-        cursor.execute("SELECT config_text, plan_id FROM configs WHERE id = ?", (c_id,))
+        cursor.execute("SELECT config_text, plan_id FROM configs WHERE id = %s", (c_id,))
         config = cursor.fetchone()
+        cursor.close()
         conn.close()
 
         if not config:
@@ -237,3 +258,17 @@ def register_user_panel_handlers(bot):
         text = "❓ **سوالات متداول (FAQ)**\n\n**۱. چگونه حساب خود را شارژ کنم؟**\nاز منوی اصلی وارد بخش «کیف پول من» شده و مبلغ مورد نظر را برای دریافت فاکتور انتخاب کنید.\n\n**۲. سرویس‌ها چقدر اعتبار دارند؟**\nبسته به نوع اشتراکی که تهیه می‌کنید، زمان و حجم آن در بخش «اشتراک‌های من» به صورت لحظه‌ای قابل مشاهده است.\n\n**۳. تأیید رسید پرداخت چقدر زمان می‌برد؟**\nرسیدهای شما به صورت خودکار و در کمتر از ۱ دقیقه توسط تیم پشتیبانی بررسی و اعمال می‌شوند.\n"
         markup = InlineKeyboardMarkup().add(InlineKeyboardButton("🔙 بازگشت به پشتیبانی", callback_data="support"))
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
+
+    def process_new_text(message, bot, text_key):
+        if message.text in ["/start", "/admin"]: return
+        conn = database.get_connection()
+        if not conn: return
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO settings (key, value) VALUES (%s, %s)
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+        """, (text_key, message.text))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        bot.send_message(message.chat.id, "✅ متن جدید با موفقیت در سیستم مرکزی ذخیره شد!", reply_markup=InlineKeyboardMarkup().add(InlineKeyboardButton("🔙 بازگشت به تنظیمات", callback_data="admin_settings")))
