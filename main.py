@@ -254,8 +254,30 @@ def test_buy_command(message):
     conn.close()
 # ========================================================
 
+# ========================================================
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import os
+
+# ساخت یک وب‌سرور کوچک برای پاسخ به رندر و UptimeRobot
+class DummyHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b"NETRIX Bot is ALIVE!")
+
+def run_dummy_server():
+    port = int(os.environ.get("PORT", 10000))
+    server_address = ('0.0.0.0', port)
+    httpd = HTTPServer(server_address, DummyHandler)
+    httpd.serve_forever()
+
 if __name__ == "__main__":
-    # این خط جا مونده بود که باید دیتابیس رو آپدیت کنه
+    # روشن کردن سرور فیک در پس‌زمینه
+    threading.Thread(target=run_dummy_server, daemon=True).start()
+    
+    # آپدیت دیتابیس
     database.init_db() 
     
     print("🚀 ربات NETRIX با ساختار ماژولار روشن شد...")
