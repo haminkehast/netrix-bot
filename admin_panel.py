@@ -153,7 +153,9 @@ def register_admin_handlers(bot):
         # بازنویسی مستقیم روی فایل shop_data.py
         try:
             with open('shop_data.py', 'w', encoding='utf-8') as f:
+                # تبدیل لیست به تاپل برای حفظ ساختار اولیه کد شما
                 json_str = json.dumps(SHOP_DATA, ensure_ascii=False, indent=4)
+                # جایگزینی براکت‌ها با پرانتز در پکیج‌ها تا ساختار تاپل به هم نریزد
                 import re
                 formatted_str = re.sub(r'\[\s*"([^"]+)",\s*(\d+)\s*\]', r'("\1", \2)', json_str)
                 f.write(f"SHOP_DATA = {formatted_str}\n")
