@@ -1,4 +1,3 @@
-# subscriptions.py
 import requests
 import math
 import time
@@ -38,15 +37,20 @@ def register_subscriptions_handlers(bot):
     def my_subscriptions_menu(call):
         user_id = call.from_user.id
         
-        conn = database.sqlite3.connect('netrix.db')
+        conn = database.get_connection()
+        if not conn:
+            bot.answer_callback_query(call.id, "❌ خطای سرور.", show_alert=True)
+            return
+            
         cursor = conn.cursor()
         
-        cursor.execute('SELECT id, config_text FROM configs WHERE owner_id = ? AND status = "sold"', (user_id,))
+        cursor.execute("SELECT id, config_text FROM configs WHERE owner_id = %s AND status = 'sold'", (user_id,))
         user_configs = cursor.fetchall()
         
-        cursor.execute('SELECT COUNT(*) FROM configs WHERE owner_id = ?', (user_id,))
+        cursor.execute("SELECT COUNT(*) FROM configs WHERE owner_id = %s", (user_id,))
         total_purchases_ever = cursor.fetchone()[0]
         
+        cursor.close()
         conn.close()
 
         if not user_configs:
@@ -88,10 +92,12 @@ def register_subscriptions_handlers(bot):
         # اگر کاربر روی دکمه آپدیت کلیک کرده باشد، متن پاپ‌آپ کوتاهی نمایش می‌دهیم
         bot.answer_callback_query(call.id, "🔄 در حال دریافت اطلاعات جدید...", show_alert=False)
         
-        conn = database.sqlite3.connect('netrix.db')
+        conn = database.get_connection()
+        if not conn: return
         cursor = conn.cursor()
-        cursor.execute('SELECT config_text, plan_id FROM configs WHERE id = ?', (config_id,))
+        cursor.execute("SELECT config_text, plan_id FROM configs WHERE id = %s", (config_id,))
         result = cursor.fetchone()
+        cursor.close()
         conn.close()
         
         if not result:
@@ -146,7 +152,7 @@ def register_subscriptions_handlers(bot):
             f"مقدار مصرف:          `{used_str}`\n"
             f"دانلود:              `{down_str}`\n"
             f"آپلود:               `{up_str}`\n"
-            f"اعتبار زمانی:         `{days_left}`\n\n"
+            f"اعتبار زمانی:          `{days_left}`\n\n"
             f"🔗 **لینک اتصال (سابسکریپشن):**\n"
             f"`{sub_link}`\n\n"
             f"💡 *برای کپی کردن، روی لینک بالا کلیک کنید.*\n"
